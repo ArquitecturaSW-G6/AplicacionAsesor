@@ -25,6 +25,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,21 +55,32 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun VistaAsesor(modifier: Modifier = Modifier) {
     val context = LocalContext.current
-
-    // Estado simulado
-    var clienteActual by remember { mutableStateOf<String?>(null) }
-    var siguientes by remember { mutableStateOf(listOf("Cliente 1", "Cliente 2", "Cliente 3")) }
-    var atendidos by remember { mutableStateOf(listOf<String>()) }
+    var clienteActual by remember { mutableStateOf<Turno?>(null) }
+    var siguientes by remember { mutableStateOf(listOf<Turno>()) }
+    var atendidos by remember { mutableStateOf(listOf<Turno>()) }
 
     var tabIndex by remember { mutableStateOf(0) }
     val tabs = listOf("Siguientes", "Atendidos")
 
+    // 🔹 Llamar al backend cuando se carga la vista
+    LaunchedEffect(Unit) {
+        RetrofitClient.instance.getTurnos().enqueue(object : retrofit2.Callback<List<Turno>> {
+            override fun onResponse(call: retrofit2.Call<List<Turno>>, response: retrofit2.Response<List<Turno>>) {
+                if (response.isSuccessful) {
+                    siguientes = response.body()?.filter { it.estado == "pendiente" } ?: emptyList()
+                    atendidos = response.body()?.filter { it.estado == "atendido" } ?: emptyList()
+                }
+            }
+
+            override fun onFailure(call: retrofit2.Call<List<Turno>>, t: Throwable) {
+                Toast.makeText(context, "Error al cargar turnos", Toast.LENGTH_SHORT).show()
+            }
+        })
+    }
+
     Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(16.dp)
+        modifier = modifier.fillMaxSize().padding(16.dp)
     ) {
-        // Título
         Text(
             text = "Atendiendo actualmente",
             style = MaterialTheme.typography.headlineSmall,
@@ -78,22 +90,16 @@ fun VistaAsesor(modifier: Modifier = Modifier) {
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Recuadro usuario actual
         Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(100.dp),
+            modifier = Modifier.fillMaxWidth().height(100.dp),
             colors = CardDefaults.cardColors(
                 containerColor = if (clienteActual != null) MaterialTheme.colorScheme.primaryContainer
                 else MaterialTheme.colorScheme.surfaceVariant
             )
         ) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
-                    text = clienteActual ?: "Ningún cliente en atención",
+                    text = clienteActual?.nombre ?: "Ningún cliente en atención",
                     style = MaterialTheme.typography.titleLarge,
                     textAlign = TextAlign.Center
                 )
@@ -102,17 +108,22 @@ fun VistaAsesor(modifier: Modifier = Modifier) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Botones
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             Button(
                 onClick = {
-                    clienteActual?.let  {
-                        atendidos = atendidos + it
-                        clienteActual = null
-                        Toast.makeText(context, "Cliente atendido", Toast.LENGTH_SHORT).show()
+                    clienteActual?.let { turno ->
+                        RetrofitClient.instance.atenderTurno(turno.id).enqueue(object : retrofit2.Callback<Turno> {
+                            override fun onResponse(call: retrofit2.Call<Turno>, response: retrofit2.Response<Turno>) {
+                                if (response.isSuccessful) {
+                                    atendidos = atendidos + turno.copy(estado = "atendido")
+                                    clienteActual = null
+                                    Toast.makeText(context, "Cliente atendido", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            override fun onFailure(call: retrofit2.Call<Turno>, t: Throwable) {
+                                Toast.makeText(context, "Error al marcar atendido", Toast.LENGTH_SHORT).show()
+                            }
+                        })
                     }
                 },
                 enabled = clienteActual != null
@@ -125,7 +136,7 @@ fun VistaAsesor(modifier: Modifier = Modifier) {
                     if (siguientes.isNotEmpty()) {
                         clienteActual = siguientes.first()
                         siguientes = siguientes.drop(1)
-                        Toast.makeText(context, "Atendiendo a $clienteActual", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Atendiendo a ${clienteActual?.nombre}", Toast.LENGTH_SHORT).show()
                     }
                 },
                 enabled = clienteActual == null && siguientes.isNotEmpty()
@@ -136,7 +147,6 @@ fun VistaAsesor(modifier: Modifier = Modifier) {
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Tabs (Siguientes / Atendidos)
         TabRow(selectedTabIndex = tabIndex) {
             tabs.forEachIndexed { index, title ->
                 Tab(
@@ -150,11 +160,12 @@ fun VistaAsesor(modifier: Modifier = Modifier) {
         Spacer(modifier = Modifier.height(8.dp))
 
         when (tabIndex) {
-            0 -> ListaClientes(siguientes, "Clientes en cola")
-            1 -> ListaClientes(atendidos, "Clientes atendidos")
+            0 -> ListaClientes(siguientes.map { it.nombre }, "Clientes en cola")
+            1 -> ListaClientes(atendidos.map { it.nombre }, "Clientes atendidos")
         }
     }
 }
+
 @Composable
 fun ListaClientes(clientes: List<String>, titulo: String) {
     Column(modifier = Modifier.fillMaxSize()) {
