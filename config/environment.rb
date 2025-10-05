@@ -1,5 +1,7 @@
-# Load the Rails application.
+# config/environment.rb
 require_relative "application"
 
-# Initialize the Rails application.
+# Asegurar que nadie intente cargar AR
+module ActiveRecord; end
+
 Rails.application.initialize!
