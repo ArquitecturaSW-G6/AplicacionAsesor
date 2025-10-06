@@ -4,14 +4,13 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
 object RetrofitClient {
-    private const val BASE_URL = "https://monarchical-carlena-griffinish.ngrok-free.dev/"
+    private const val BASE_URL = "https://rejoiceful-lona-customarily.ngrok-free.dev/"
 
     val instance: ApiService by lazy {
-        val retrofit = Retrofit.Builder()
+        Retrofit.Builder()
             .baseUrl(BASE_URL)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
-
-        retrofit.create(ApiService::class.java)
+            .create(ApiService::class.java)
     }
 }

@@ -37,6 +37,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.grupo6.aplicacionasesor.ui.theme.AplicacionAsesorTheme
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -62,20 +64,26 @@ fun VistaAsesor(modifier: Modifier = Modifier) {
     var tabIndex by remember { mutableStateOf(0) }
     val tabs = listOf("Siguientes", "Atendidos")
 
-    // 🔹 Llamar al backend cuando se carga la vista
-    LaunchedEffect(Unit) {
-        RetrofitClient.instance.getTurnos().enqueue(object : retrofit2.Callback<List<Turno>> {
-            override fun onResponse(call: retrofit2.Call<List<Turno>>, response: retrofit2.Response<List<Turno>>) {
-                if (response.isSuccessful) {
-                    siguientes = response.body()?.filter { it.estado == "pendiente" } ?: emptyList()
-                    atendidos = response.body()?.filter { it.estado == "atendido" } ?: emptyList()
-                }
-            }
 
-            override fun onFailure(call: retrofit2.Call<List<Turno>>, t: Throwable) {
-                Toast.makeText(context, "Error al cargar turnos", Toast.LENGTH_SHORT).show()
-            }
-        })
+    LaunchedEffect(Unit) {
+        while (isActive) {  // se cancela automáticamente si el Composable se destruye
+            RetrofitClient.instance.getTurnosPendientes().enqueue(object : retrofit2.Callback<TurnosResponse> {
+                override fun onResponse(
+                    call: retrofit2.Call<TurnosResponse>,
+                    response: retrofit2.Response<TurnosResponse>
+                ) {
+                    if (response.isSuccessful) {
+                        siguientes = response.body()?.turnos ?: emptyList()
+                    }
+                }
+
+                override fun onFailure(call: retrofit2.Call<TurnosResponse>, t: Throwable) {
+                    Toast.makeText(context, "Error al cargar turnos", Toast.LENGTH_SHORT).show()
+                }
+            })
+
+            delay(5000)
+        }
     }
 
     Column(
@@ -112,15 +120,17 @@ fun VistaAsesor(modifier: Modifier = Modifier) {
             Button(
                 onClick = {
                     clienteActual?.let { turno ->
-                        RetrofitClient.instance.atenderTurno(turno.id).enqueue(object : retrofit2.Callback<Turno> {
-                            override fun onResponse(call: retrofit2.Call<Turno>, response: retrofit2.Response<Turno>) {
+                        val body = mapOf("turno" to turno)
+                        RetrofitClient.instance.atenderTurno(body).enqueue(object : retrofit2.Callback<Map<String, String>> {
+                            override fun onResponse(call: retrofit2.Call<Map<String, String>>, response: retrofit2.Response<Map<String, String>>) {
                                 if (response.isSuccessful) {
-                                    atendidos = atendidos + turno.copy(estado = "atendido")
+                                    atendidos = atendidos + turno
                                     clienteActual = null
                                     Toast.makeText(context, "Cliente atendido", Toast.LENGTH_SHORT).show()
                                 }
                             }
-                            override fun onFailure(call: retrofit2.Call<Turno>, t: Throwable) {
+
+                            override fun onFailure(call: retrofit2.Call<Map<String, String>>, t: Throwable) {
                                 Toast.makeText(context, "Error al marcar atendido", Toast.LENGTH_SHORT).show()
                             }
                         })
